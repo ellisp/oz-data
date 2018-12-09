@@ -26,7 +26,7 @@ DROP TABLE IF EXISTS #revised
 GO
 
 -- tables with the same shape as the main dataset so we can hold three different versions of it at once, for comparisons
-SELECT * INTO #latest FROM ced_persons; 
+SELECT top 1000 * INTO #latest FROM ced_persons_seed; 
 SELECT * INTO #second_latest FROM #latest ;
 SELECT * INTO #revised FROM #latest WHERE 1 = 2;
 GO
@@ -67,7 +67,7 @@ BEGIN
 				needsassistance,
 				sex,
 				sum(persons) as sample_freq
-			FROM dbo.ced_persons
+			FROM #latest
 			GROUP BY ced_name16, age04514, needsassistance, sex) as s
 		INNER JOIN dbo.pop2 AS p 
 		ON p.ced_name16 = s.ced_name16 AND
@@ -85,8 +85,10 @@ BEGIN
 			l.age5yr,
 			l.indigenous,
 			l.onlyenglishspokenhome,
-			l.religion,
-			l.denomination,
+			l.Religion,
+			l.Denomination,
+			l.BornAust,
+			l.AustCitizen,
 			l.persons * adj AS persons
 		FROM #latest AS l
 		INNER JOIN adjustments AS a
@@ -135,8 +137,10 @@ BEGIN
 			l.age5yr,
 			l.indigenous,
 			l.onlyenglishspokenhome,
-			l.religion,
-			l.denomination,
+			l.Religion,
+			l.Denomination,
+			l.BornAust,
+			l.AustCitizen,
 			l.persons * adj AS persons
 		FROM #latest AS l
 		INNER JOIN adjustments AS a
@@ -182,8 +186,10 @@ BEGIN
 			l.age5yr,
 			l.indigenous,
 			l.onlyenglishspokenhome,
-			l.religion,
-			l.denomination,
+			l.Religion,
+			l.Denomination,
+			l.BornAust,
+			l.AustCitizen,
 			l.persons * adj AS persons
 		FROM #latest AS l
 		INNER JOIN adjustments AS a
@@ -230,8 +236,10 @@ BEGIN
 			l.age5yr,
 			l.indigenous,
 			l.onlyenglishspokenhome,
-			l.religion,
-			l.denomination,
+			l.Religion,
+			l.Denomination,
+			l.BornAust,
+			l.AustCitizen,
 			l.persons * adj AS persons
 		FROM #latest AS l
 		INNER JOIN adjustments AS a
@@ -247,6 +255,99 @@ BEGIN
 
 	DELETE FROM #revised WHERE 1 = 1;
 
+	-------------------------------POPULATION TABLE 6---------------------
+
+	WITH adjustments AS
+		(SELECT 
+			s.ced_name16,
+			s.BornAust,
+			s.sex,
+			p.freq / s.sample_freq AS adj 
+		FROM
+			(SELECT
+				ced_name16,
+				BornAust,
+				sex,
+				sum(persons) as sample_freq
+			FROM #latest
+			GROUP BY ced_name16, BornAust, sex) as s
+		INNER JOIN dbo.pop6 AS p 
+		ON p.ced_name16 = s.ced_name16 AND
+		 p.BornAust = s.BornAust AND
+		 p.sex = s.sex)
+	INSERT INTO #revised
+		SELECT 
+			l.ced_name16,
+			l.age04514,
+			l.needsassistance,
+			l.sex,
+			l.age5yr,
+			l.indigenous,
+			l.onlyenglishspokenhome,
+			l.religion,
+			l.denomination,
+			l.BornAust,
+			l.AustCitizen,
+			l.persons * adj AS persons
+		FROM #latest AS l
+		INNER JOIN adjustments AS a
+		ON a.ced_name16 = l.ced_name16 AND
+		 a.BornAust = l.BornAust AND
+		 a.sex = l.sex;
+
+	DELETE FROM #latest WHERE 1 = 1;
+
+	INSERT #latest
+		SELECT * FROM #revised;
+
+	DELETE FROM #revised WHERE 1 = 1;
+
+		-------------------------------POPULATION TABLE 7---------------------
+
+	WITH adjustments AS
+		(SELECT 
+			s.ced_name16,
+			s.AustCitizen,
+			s.sex,
+			p.freq / s.sample_freq AS adj 
+		FROM
+			(SELECT
+				ced_name16,
+				AustCitizen,
+				sex,
+				sum(persons) as sample_freq
+			FROM #latest
+			GROUP BY ced_name16, religion, denomination, sex) as s
+		INNER JOIN dbo.pop7 AS p 
+		ON p.ced_name16 = s.ced_name16 AND
+		 p.AustCitizen = s.AustCitizen AND
+		 p.sex = s.sex)
+	INSERT INTO #revised
+		SELECT 
+			l.ced_name16,
+			l.age04514,
+			l.needsassistance,
+			l.sex,
+			l.age5yr,
+			l.indigenous,
+			l.onlyenglishspokenhome,
+			l.Religion,
+			l.Denomination,
+			l.BornAust,
+			l.AustCitizen,
+			l.persons * adj AS persons
+		FROM #latest AS l
+		INNER JOIN adjustments AS a
+		ON a.ced_name16 = l.ced_name16 AND
+		 a.AustCitizen = l.AustCitizen AND
+		 a.sex = l.sex;
+
+	DELETE FROM #latest WHERE 1 = 1;
+
+	INSERT #latest
+		SELECT * FROM #revised;
+
+	DELETE FROM #revised WHERE 1 = 1;
 
 
 	--------------Sum up how we're going-----------

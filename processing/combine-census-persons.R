@@ -5,6 +5,9 @@ library(DBI)
 library(dbplyr)
 library(Census2016)
 
+# What would really improve this would be some national-level cross tabs of variables we can't match
+# at area level. For example, country of birth by indigenous status would dramatically improve things.
+
 #====================Classify datasets by the value variable==================
 
 # Persons
