@@ -1,6 +1,9 @@
-library(survey)
 library(Census2016.DataPack)
 library(tidyverse)
+library(odbc)
+library(DBI)
+library(dbplyr)
+library(Census2016)
 
 #====================Classify datasets by the value variable==================
 
@@ -10,9 +13,9 @@ summary(CED__Age5yr_Indigenous_Sex)
 summary(CED__Age_NeedsAssistance_Sex)
 summary(CED__Age_Sex)
 summary(CED__Age_UsualResidence)
-summary(CED__AustCitizen_Sex)
-summary(CED__BornAust_Sex)
-summary(CED__CountryOfBirth_Sex)
+head(CED__AustCitizen_Sex)
+head(CED__BornAust_Sex)
+head(CED__CountryOfBirth_Sex)
 summary(CED__HomeCensusNight_Sex)
 summary(CED__OnlyEnglishSpokenHome_Sex)
 summary(CED__Religion_Denomination_Sex)
@@ -60,7 +63,7 @@ replace_na <- function(x){
 #-----------------define populations----------------
 full_pop <- sum(CED__Age_Sex$persons)
 
-# Probably won't use this one if we get pushed for memory:
+# Probably won't use this as running out of memory:
 pop1 <- CED__Age_UsualResidence %>%
   as_tibble() %>%
   rename(Freq = persons) %>%
@@ -106,12 +109,27 @@ pop5 <- CED__Religion_Denomination_Sex %>%
          adj = full_pop / sum(Freq),
          Freq = Freq * adj)
 
-pop1$adj <- NULL
-pop2$adj <- NULL
-pop3$adj <- NULL
-pop4$adj <- NULL
-pop5$adj <- NULL
-  
+pop6 <- CED__BornAust_Sex %>%
+  as_tibble() %>%
+  rename(Freq = persons) %>%
+  mutate(Freq = ifelse(Freq == 0 , 3, Freq),
+         adj = full_pop / sum(Freq),
+         Freq = Freq * adj)
+
+pop7 <- CED__AustCitizen_Sex %>%
+  as_tibble() %>%
+  rename(Freq = persons) %>%
+  mutate(Freq = ifelse(Freq == 0 , 3, Freq),
+         adj = full_pop / sum(Freq),
+         Freq = Freq * adj)
+
+pop1[ , "adj"] <- NULL
+pop2[ , "adj"] <- NULL
+pop3[ , "adj"] <- NULL
+pop4[ , "adj"] <- NULL
+pop5[ , "adj"] <- NULL
+pop6[ , "adj"] <- NULL  
+pop7[ , "adj"] <- NULL
 
 #----------------------------define our seed values--------------
 possible_ages <- data_frame(Age = 0:100) %>%
@@ -124,32 +142,25 @@ possible_ages <- data_frame(Age = 0:100) %>%
   select(-Age) %>%
   distinct()
 
-f_ced_persons <- select(pop2, -Freq) %>%
+ced_persons_seed <- select(pop2, -Freq) %>%
   full_join(select(pop3, -Freq)) %>%
+  inner_join(distinct(possible_ages, Age5yr, Age04514)) %>%
   inner_join(distinct(possible_ages, Age5yr, Age04514)) %>%
   full_join(select(pop4, -Freq)) %>%
   full_join(select(pop5, -Freq)) %>%
+  full_join(select(pop6, -Freq)) %>%
+  full_join(select(pop7, -Freq)) %>%
   mutate(persons = 1) 
 
+con <- dbConnect(odbc(), "sqlserver", database = "ozdata")
+dbGetQuery(con, "DROP TABLE IF EXISTS ced_persons_seed")
+dbWriteTable(con, name = "ced_persons_seed", value = ced_persons_seed)
 
-#------------------weight the seed values to the population-------------------------
+for(p in c("pop2", "pop3", "pop4", "pop5", "pop6", "pop7")){
+  dbGetQuery(con, paste0("DROP TABLE IF EXISTS ", p))
+  dbWriteTable(con, name = p, value = get(p))
+}
 
-facts_svy <- svydesign(~1, data = f_ced_persons, weights = ~persons)
+dbDisconnect(con)
 
-facts_svy <- rake(facts_svy, 
-                  sample.margins = list(~Age04514 + Sex + NeedsAssistance + CED_NAME16,
-                                        ~Age5yr + Sex + Indigenous + CED_NAME16,
-                                        ~Sex + OnlyEnglishSpokenHome + CED_NAME16), 
-                  population = list(pop2,
-                                    pop3,
-                                    pop4))
-
-facts$persons <- weights(facts_svy)
-
-arrange(facts, persons)
-
-full_pop
-sum(facts$persons)
-sum(round(facts$persons))
-
-
+# Then run in SQL Server the ./SQL/rake-ced.sql script. Note it takes a while to run
