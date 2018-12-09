@@ -18,6 +18,9 @@ Takes 4 minutes with 1 million rows to do 2 iterations
 USE ozdata;
 GO
 
+
+
+
 -- clear the decks:
 DROP TABLE IF EXISTS #latest
 DROP TABLE IF EXISTS #second_latest
@@ -26,7 +29,7 @@ DROP TABLE IF EXISTS #revised
 GO
 
 -- tables with the same shape as the main dataset so we can hold three different versions of it at once, for comparisons
-SELECT top 1000 * INTO #latest FROM ced_persons_seed; 
+SELECT * INTO #latest FROM ced_persons_seed
 SELECT * INTO #second_latest FROM #latest ;
 SELECT * INTO #revised FROM #latest WHERE 1 = 2;
 GO
@@ -46,8 +49,7 @@ GO
 DECLARE @i INT = 0;
 
 
-
-WHILE @i < 10 AND (SELECT min(latest) FROM #delta) > 1
+WHILE @i < 5 AND (SELECT min(latest) FROM #delta) > 3
 BEGIN
 
 	-------------------------------POPULATION TABLE 2---------------------
@@ -89,24 +91,24 @@ BEGIN
 			l.Denomination,
 			l.BornAust,
 			l.AustCitizen,
-			l.persons * adj AS persons
+			l.persons * a.adj AS persons
 		FROM #latest AS l
 		INNER JOIN adjustments AS a
 		ON a.ced_name16 = l.ced_name16 AND
 		 a.age04514 = l.age04514 AND
 		 a.needsassistance = l.needsassistance AND
 		 a.sex = l.sex;
-
+		 
     -- shuffle around the various versions
 	DELETE FROM #latest WHERE 1 = 1;
-
+	
 	INSERT #latest
-	SELECT * FROM #revised;
+		SELECT * FROM #revised;
 
 	DELETE FROM #revised WHERE 1 = 1;
-
+	
 	-------------------------------POPULATION TABLE 3---------------------
-
+	
 	WITH adjustments AS
 		(SELECT 
 			s.ced_name16,
@@ -153,7 +155,7 @@ BEGIN
 	DELETE FROM #latest WHERE 1 = 1;
 
 	INSERT #latest
-	SELECT * FROM #revised;
+		SELECT * FROM #revised;
 
 	DELETE FROM #revised WHERE 1 = 1;
 
@@ -317,7 +319,7 @@ BEGIN
 				sex,
 				sum(persons) as sample_freq
 			FROM #latest
-			GROUP BY ced_name16, religion, denomination, sex) as s
+			GROUP BY ced_name16, AustCitizen, sex) as s
 		INNER JOIN dbo.pop7 AS p 
 		ON p.ced_name16 = s.ced_name16 AND
 		 p.AustCitizen = s.AustCitizen AND
@@ -349,6 +351,48 @@ BEGIN
 
 	DELETE FROM #revised WHERE 1 = 1;
 
+	-------------------------------POPULATION TABLE 8---------------------
+
+	WITH adjustments AS
+		(SELECT 
+			s.Indigenous,
+			s.AustCitizen,
+			p.freq / s.sample_freq AS adj 
+		FROM
+			(SELECT
+				Indigenous,
+				AustCitizen,
+				sum(persons) as sample_freq
+			FROM #latest
+			GROUP BY Indigenous, AustCitizen) as s
+		INNER JOIN dbo.pop8 AS p 
+		ON p.indigenous = s.indigenous AND
+		 p.AustCitizen = s.AustCitizen)
+	INSERT INTO #revised
+		SELECT 
+			l.ced_name16,
+			l.age04514,
+			l.needsassistance,
+			l.sex,
+			l.age5yr,
+			l.indigenous,
+			l.onlyenglishspokenhome,
+			l.Religion,
+			l.Denomination,
+			l.BornAust,
+			l.AustCitizen,
+			l.persons * adj AS persons
+		FROM #latest AS l
+		INNER JOIN adjustments AS a
+		ON a.Indigenous = l.Indigenous AND
+		 a.AustCitizen = l.AustCitizen;
+
+	DELETE FROM #latest WHERE 1 = 1;
+
+	INSERT #latest
+		SELECT * FROM #revised;
+
+	DELETE FROM #revised WHERE 1 = 1;
 
 	--------------Sum up how we're going-----------
 	INSERT INTO #delta 
