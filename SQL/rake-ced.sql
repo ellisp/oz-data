@@ -13,12 +13,11 @@ TODO - this code is repetitive and would be better off in a function that writes
 
 
 Takes 4 minutes with 1 million rows to do 2 iterations
+100 minutes with 11 million rows and 2 iterations (full dataset)
 */
 
 USE ozdata;
 GO
-
-
 
 
 -- clear the decks:
@@ -31,17 +30,38 @@ GO
 -- tables with the same shape as the main dataset so we can hold three different versions of it at once, for comparisons
 SELECT * INTO #latest FROM ced_persons_seed
 SELECT * INTO #second_latest FROM #latest ;
+
+-- empty shell to insert the revised versions after each round of re-weighting:
 SELECT * INTO #revised FROM #latest WHERE 1 = 2;
+GO
+
+-- Define a procedure for use at the end of each re-weighting process which shuffles the contents of the various
+-- tables around so we know which ones will be used for the next re-weighting process:
+DROP PROCEDURE IF EXISTS sp_shuffle;
+GO
+
+CREATE PROCEDURE sp_shuffle
+AS
+	DELETE FROM #latest WHERE 1 = 1;
+	
+	INSERT #latest
+		SELECT * FROM #revised;
+
+	DELETE FROM #revised WHERE 1 = 1;	
 GO
 
 
 -- table to store how much the estimates have changed in each iteration
 CREATE TABLE #delta (
-	latest INT
+	latest FLOAT
 	);
 
+
+DECLARE @first_delta FLOAT = (SELECT AVG(Freq) FROM pop2);
+
+
 INSERT #delta (latest)
-	VALUES (1000000);
+	VALUES (@first_delta);
 GO
 
 ------------------Start of iteration---------------------------
@@ -49,7 +69,7 @@ GO
 DECLARE @i INT = 0;
 
 
-WHILE @i < 5 AND (SELECT min(latest) FROM #delta) > 3
+WHILE @i < 5 AND (SELECT min(latest) FROM #delta) > 0.4
 BEGIN
 
 	-------------------------------POPULATION TABLE 2---------------------
@@ -94,19 +114,13 @@ BEGIN
 			l.persons * a.adj AS persons
 		FROM #latest AS l
 		INNER JOIN adjustments AS a
-		ON a.ced_name16 = l.ced_name16 AND
-		 a.age04514 = l.age04514 AND
-		 a.needsassistance = l.needsassistance AND
-		 a.sex = l.sex;
+		ON a.ced_name16		= l.ced_name16		AND
+		 a.age04514			= l.age04514		AND
+		 a.needsassistance	= l.needsassistance AND
+		 a.sex				= l.sex;
 		 
-    -- shuffle around the various versions
-	DELETE FROM #latest WHERE 1 = 1;
-	
-	INSERT #latest
-		SELECT * FROM #revised;
-
-	DELETE FROM #revised WHERE 1 = 1;
-	
+    EXECUTE sp_shuffle;
+		
 	-------------------------------POPULATION TABLE 3---------------------
 	
 	WITH adjustments AS
@@ -146,19 +160,13 @@ BEGIN
 			l.persons * adj AS persons
 		FROM #latest AS l
 		INNER JOIN adjustments AS a
-		ON a.ced_name16 = l.ced_name16 AND
-		 a.age5yr = l.age5yr AND
-		 a.indigenous = l.indigenous AND
-		 a.sex = l.sex;
+		ON a.ced_name16 = l.ced_name16	AND
+		 a.age5yr		= l.age5yr		AND
+		 a.indigenous	= l.indigenous	AND
+		 a.sex			= l.sex;
 
-
-	DELETE FROM #latest WHERE 1 = 1;
-
-	INSERT #latest
-		SELECT * FROM #revised;
-
-	DELETE FROM #revised WHERE 1 = 1;
-
+	EXECUTE sp_shuffle;
+	
 	-------------------------------POPULATION TABLE 4---------------------
 
 	WITH adjustments AS
@@ -195,17 +203,12 @@ BEGIN
 			l.persons * adj AS persons
 		FROM #latest AS l
 		INNER JOIN adjustments AS a
-		ON a.ced_name16 = l.ced_name16 AND
-		 a.onlyenglishspokenhome = l.onlyenglishspokenhome AND
-		 a.sex = l.sex;
+		ON a.ced_name16				= l.ced_name16				AND
+		 a.onlyenglishspokenhome	= l.onlyenglishspokenhome	AND
+		 a.sex						= l.sex;
 
-	DELETE FROM #latest WHERE 1 = 1;
-
-	INSERT #latest
-		SELECT * FROM #revised;
-
-	DELETE FROM #revised WHERE 1 = 1;
-
+	EXECUTE sp_shuffle;
+	
 	-------------------------------POPULATION TABLE 5---------------------
 
 	WITH adjustments AS
@@ -245,18 +248,13 @@ BEGIN
 			l.persons * adj AS persons
 		FROM #latest AS l
 		INNER JOIN adjustments AS a
-		ON a.ced_name16 = l.ced_name16 AND
-		 a.religion = l.religion AND
-		 a.denomination = l.denomination AND
-		 a.sex = l.sex;
+		ON a.ced_name16 = l.ced_name16		AND
+		 a.religion		= l.religion		AND
+		 a.denomination = l.denomination	AND
+		 a.sex			= l.sex;
 
-	DELETE FROM #latest WHERE 1 = 1;
-
-	INSERT #latest
-		SELECT * FROM #revised;
-
-	DELETE FROM #revised WHERE 1 = 1;
-
+	EXECUTE sp_shuffle;
+	
 	-------------------------------POPULATION TABLE 6---------------------
 
 	WITH adjustments AS
@@ -293,18 +291,13 @@ BEGIN
 			l.persons * adj AS persons
 		FROM #latest AS l
 		INNER JOIN adjustments AS a
-		ON a.ced_name16 = l.ced_name16 AND
-		 a.BornAust = l.BornAust AND
-		 a.sex = l.sex;
+		ON a.ced_name16 = l.ced_name16	AND
+		 a.BornAust		= l.BornAust	AND
+		 a.sex			= l.sex;
 
-	DELETE FROM #latest WHERE 1 = 1;
-
-	INSERT #latest
-		SELECT * FROM #revised;
-
-	DELETE FROM #revised WHERE 1 = 1;
-
-		-------------------------------POPULATION TABLE 7---------------------
+	EXECUTE sp_shuffle;
+	
+	-------------------------------POPULATION TABLE 7---------------------
 
 	WITH adjustments AS
 		(SELECT 
@@ -344,13 +337,8 @@ BEGIN
 		 a.AustCitizen = l.AustCitizen AND
 		 a.sex = l.sex;
 
-	DELETE FROM #latest WHERE 1 = 1;
-
-	INSERT #latest
-		SELECT * FROM #revised;
-
-	DELETE FROM #revised WHERE 1 = 1;
-
+	EXECUTE sp_shuffle;
+	
 	-------------------------------POPULATION TABLE 8---------------------
 
 	WITH adjustments AS
@@ -366,8 +354,8 @@ BEGIN
 			FROM #latest
 			GROUP BY Indigenous, AustCitizen) as s
 		INNER JOIN dbo.pop8 AS p 
-		ON p.indigenous = s.indigenous AND
-		 p.AustCitizen = s.AustCitizen)
+		ON p.indigenous		= s.indigenous AND
+		 p.AustCitizen		= s.AustCitizen)
 	INSERT INTO #revised
 		SELECT 
 			l.ced_name16,
@@ -381,34 +369,32 @@ BEGIN
 			l.Denomination,
 			l.BornAust,
 			l.AustCitizen,
-			l.persons * adj AS persons
+			-- we round this final iteration of the persons so cells with < 0.1 people get knocked out, which gives a much neater final look.
+			ROUND(l.persons * adj,1) AS persons
 		FROM #latest AS l
 		INNER JOIN adjustments AS a
 		ON a.Indigenous = l.Indigenous AND
 		 a.AustCitizen = l.AustCitizen;
 
-	DELETE FROM #latest WHERE 1 = 1;
-
-	INSERT #latest
-		SELECT * FROM #revised;
-
-	DELETE FROM #revised WHERE 1 = 1;
-
+	EXECUTE sp_shuffle;
+	
 	--------------Sum up how we're going-----------
 	INSERT INTO #delta 
 		SELECT
-			avg(abs(b.persons - a.persons)) as latest
+			AVG(ABS(b.persons - a.persons)) as latest
 		FROM #latest AS a
 		INNER JOIN #second_latest AS b
-		ON a.ced_name16 = b.ced_name16 AND
-			a.age04514 = b.age04514    AND
-			a.needsassistance = b.needsassistance AND
-			a.sex = b.sex AND
-			a.age5yr = b.age5yr AND
-			a.indigenous = b.indigenous AND
-			a.onlyenglishspokenhome = b.onlyenglishspokenhome AND
-			a.religion = b.religion AND
-			a.denomination = b.denomination;
+		ON a.ced_name16				= b.ced_name16				AND
+			a.age04514				= b.age04514				AND
+			a.needsassistance		= b.needsassistance			AND
+			a.sex					= b.sex						AND
+			a.age5yr				= b.age5yr					AND
+			a.indigenous			= b.indigenous				AND
+			a.onlyenglishspokenhome = b.onlyenglishspokenhome	AND
+			a.religion				= b.religion				AND
+			a.denomination			= b.denomination			AND
+			a.BornAust				= b.BornAust				AND
+			a.AustCitizen			= b.AustCitizen;
 
 	DELETE #second_latest WHERE 1 = 1;
 
@@ -430,3 +416,5 @@ CREATE CLUSTERED COLUMNSTORE INDEX ccxi_ced_persons_transformed
 	ON ced_persons_transformed;
 GO
 
+DROP PROCEDURE IF EXISTS sp_shuffle;
+GO
