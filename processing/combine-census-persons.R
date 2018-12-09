@@ -56,11 +56,6 @@ replace_na <- function(x){
   return(x)
 }
 
-eg2 <- function(...){
-  expand.grid(..., stringsAsFactors = FALSE) 
-}
-
-
 
 #-----------------define populations----------------
 full_pop <- sum(CED__Age_Sex$persons)
@@ -119,57 +114,35 @@ pop5$adj <- NULL
   
 
 #----------------------------define our seed values--------------
-
-dim_values <- list(
-  CED_NAME16 = unique(CED__Age_NeedsAssistance_Sex$CED_NAME16),  
-  Age04514 = as.character(unique(CED__Age_NeedsAssistance_Sex$Age)),
-  Age014 = as.character(unique(CED__Age_UsualResidence$Age)),
-  Age5yr = as.character(unique(CED__Age5yr_Indigenous_Sex$Age)),
-  Indigenous = replace_na(as.character(unique(CED__Age5yr_Indigenous_Sex$Indigenous))),
-  Sex = as.character(unique(CED__Age_NeedsAssistance_Sex$Sex)),
-  # UsualResidence = as.character(unique(CED__Age_UsualResidence$UsualResidence)),
-  NeedsAssistance = replace_na(unique(CED__Age_NeedsAssistance_Sex$NeedsAssistance)),
-  OnlyEnglishSpokenHome = replace_na(unique(CED__OnlyEnglishSpokenHome_Sex$OnlyEnglishSpokenHome)),
-  Religion = as.character(unique(CED__Religion_Denomination_Sex$Religion)),
-  Denomination = replace_na(unique(CED__Religion_Denomination_Sex$Denomination))
-)
-
 possible_ages <- data_frame(Age = 0:100) %>%
   mutate(Age04514 = as.character(cut(Age, c(-1, 4, 14, 19, 24, 34, 44, 54, 64, 74, 84, 200), 
-                                     labels = dim_values$Age04514)),
+                                     labels = as.character(unique(CED__Age_NeedsAssistance_Sex$Age)))),
          Age014 = as.character(cut(Age, c(-1, 14, 24, 34, 44, 54, 64, 74, 84, 200),
-                                   labels = dim_values$Age014)),
+                                   labels = as.character(unique(CED__Age_UsualResidence$Age)))),
          Age5yr = as.character(cut(Age, c(-1, 4, 9, 14, 19, 24, 29, 34, 39, 44, 49, 54, 59, 64, 200),
-                                   labels = dim_values$Age5yr))) %>%
+                                   labels = as.character(unique(CED__Age5yr_Indigenous_Sex$Age))))) %>%
   select(-Age) %>%
   distinct()
 
+f_ced_persons <- select(pop2, -Freq) %>%
+  full_join(select(pop3, -Freq)) %>%
+  inner_join(distinct(possible_ages, Age5yr, Age04514)) %>%
+  full_join(select(pop4, -Freq)) %>%
+  full_join(select(pop5, -Freq)) %>%
+  mutate(persons = 1) 
 
-facts <- do.call("eg2", dim_values) %>%
-  mutate(persons = 1) %>%
-  as_tibble() %>%
-  # Eliminate impossible combinations of age:
-  inner_join(possible_ages) %>%
-  # Eliminate combinations that aren't in the data even as zeros 
-  # (this will eliminate eg "Buddhist" religion "Anglican" denomination)(:
-  inner_join(select(pop2 , -Freq)) %>%
-  inner_join(select(pop3 , -Freq)) %>%
-  inner_join(select(pop4 , -Freq)) %>%
-  inner_join(select(pop5 , -Freq)) 
 
 #------------------weight the seed values to the population-------------------------
-facts_svy <- svydesign(~1, data = facts, weights = ~persons, partial = TRUE)
 
+facts_svy <- svydesign(~1, data = f_ced_persons, weights = ~persons)
 
 facts_svy <- rake(facts_svy, 
                   sample.margins = list(~Age04514 + Sex + NeedsAssistance + CED_NAME16,
                                         ~Age5yr + Sex + Indigenous + CED_NAME16,
-                                        ~Sex + OnlyEnglishSpokenHome + CED_NAME16,
-                                        ~Sex + Religion + Denomination + CED_NAME16), 
+                                        ~Sex + OnlyEnglishSpokenHome + CED_NAME16), 
                   population = list(pop2,
                                     pop3,
-                                    pop4,
-                                    pop5))
+                                    pop4))
 
 facts$persons <- weights(facts_svy)
 
